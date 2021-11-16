@@ -21,16 +21,20 @@ fn main() -> Result<()> {
         ServerOpt::Pkcs11(_) => pkcs11client::get_keys(opt)?,
     };
 
-    let mut table = Table::new();
-    table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
-    table.set_titles(row!["ID", "Type", "Name", "Algorithm", "Length", "Own ID"]);
-    for key in keys {
-        table.add_row(row![
-            key.id, key.typ, key.name, key.alg, key.len, key.own_id
-        ]);
-    }
+    if keys.is_empty() {
+        println!("No keys found");
+    } else {
+        let mut table = Table::new();
+        table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
+        table.set_titles(row!["ID", "Type", "Name", "Algorithm", "Length", "Own ID"]);
+        for key in keys {
+            table.add_row(row![
+                key.id, key.typ, key.name, key.alg, key.len, key.own_id
+            ]);
+        }
 
-    table.printstd();
+        table.printstd();
+    }
 
     Ok(())
 }
