@@ -1,0 +1,18 @@
+[package]
+name = "keyls"
+version = "0.1.0"
+edition = "2021"
+authors = ["Ximon Eighteen <ximon.eighteen@gmail.com>"]
+description = "Crpytographic token key lister"
+repository = "https://github.com/NLnetLabs/keyls/"
+keywords = ["KMIP", "PKCS#11"]
+categories = ["cryptography"]
+readme = "README.md"
+
+[dependencies]
+anyhow = "1.0.45"
+hex = "0.4.3"
+kmip = { package = "kmip-protocol", version = "0.4.1", features = ["tls-with-openssl"] }
+pkcs11 = "0.5.0"
+prettytable-rs = "0.8.0"
+structopt = "0.3.25"
