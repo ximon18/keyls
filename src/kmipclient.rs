@@ -78,7 +78,6 @@ fn get_key<T: ReadWrite>(client: &Client<T>, key_id: &UniqueIdentifier) -> Resul
         id,
         typ,
         name,
-        own_id: String::new(),
         alg,
         len,
     })

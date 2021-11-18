@@ -32,7 +32,7 @@ pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
             keys.push(get_key(&ctx, session, key_id)?);
         }
 
-        keys.sort_by_key(|v| v.id.parse::<CK_OBJECT_HANDLE>().unwrap());
+        keys.sort_by_key(|v| v.id.clone());
 
         Ok(keys)
     } else {
@@ -80,10 +80,9 @@ fn get_key(ctx: &Ctx, session: CK_SESSION_HANDLE, key_id: CK_OBJECT_HANDLE) -> R
     };
 
     Ok(Key {
-        id: key_id.to_string(),
+        id: hex::encode_upper(&id),
         typ,
         name: String::from_utf8_lossy(&label).to_string(),
-        own_id: hex::encode_upper(&id),
         alg,
         len: len.to_string(),
     })

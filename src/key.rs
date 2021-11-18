@@ -1,7 +1,6 @@
 #[derive(Debug)]
 pub struct Key {
     pub id: String,
-    pub own_id: String,
     pub typ: KeyType,
     pub name: String,
     pub alg: String,

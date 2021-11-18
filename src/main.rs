@@ -26,11 +26,9 @@ fn main() -> Result<()> {
     } else {
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
-        table.set_titles(row!["ID", "Type", "Name", "Algorithm", "Length", "Own ID"]);
+        table.set_titles(row!["ID", "Type", "Name", "Algorithm", "Length"]);
         for key in keys {
-            table.add_row(row![
-                key.id, key.typ, key.name, key.alg, key.len, key.own_id
-            ]);
+            table.add_row(row![key.id, key.typ, key.name, key.alg, key.len]);
         }
 
         table.printstd();
