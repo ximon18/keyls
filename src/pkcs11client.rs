@@ -93,11 +93,27 @@ fn get_key_ids(
     session: CK_SESSION_HANDLE,
     object_type: CK_OBJECT_CLASS,
 ) -> Result<Vec<CK_OBJECT_HANDLE>> {
-    let max_object_count = 1000; // 0 should mean find all objects but the Rust `pkcs11` crate doesn't honour this
+    let mut key_ids = Vec::new();
+    let max_object_count: CK_ULONG = 100;
+
     let template: Vec<CK_ATTRIBUTE> =
         vec![CK_ATTRIBUTE::new(CKA_CLASS).with_ck_ulong(&object_type)];
     ctx.find_objects_init(session, &template)?;
-    let key_ids = ctx.find_objects(session, max_object_count)?;
+
+    loop {
+        // Find more results
+        let mut found_key_ids = ctx.find_objects(session, max_object_count)?;
+        let found_count: u64 = found_key_ids.len().try_into().unwrap();
+
+        // Move the found results into the final result vector
+        key_ids.append(&mut found_key_ids);
+
+        // Stop if the find buffer was not filled, i.e. there are no more results to be found
+        if found_count < max_object_count {
+            break;
+        }
+    }
+
     ctx.find_objects_final(session)?;
     Ok(key_ids)
 }
