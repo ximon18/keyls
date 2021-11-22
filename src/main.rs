@@ -24,6 +24,7 @@ fn main() -> Result<()> {
     if keys.is_empty() {
         println!("No keys found");
     } else {
+        println!("Found {} keys", keys.len());
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
         table.set_titles(row!["ID", "Type", "Name", "Algorithm", "Length"]);
