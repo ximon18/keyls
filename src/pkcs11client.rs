@@ -23,7 +23,7 @@ pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
         let slot = get_slot(&pkcs11, server_opt)?;
         println!("Using PKCS#11 slot id {} ({:#x})", slot.id(), slot.id());
         if let Some(pin) = &server_opt.user_pin {
-            pkcs11.set_pin(slot, &pin)?;
+            pkcs11.set_pin(slot, pin)?;
         }
 
         let mut flags = Flags::new();
@@ -123,7 +123,7 @@ fn get_slot(pkcs11: &Pkcs11, server_opt: &Pkcs11ServerOpt) -> Result<Slot> {
     fn has_token_label(pkcs11: &Pkcs11, slot: Slot, slot_label: &str) -> bool {
         pkcs11
             .get_token_info(slot)
-            .map(|info| String::from_utf8_lossy(&info.label).trim_end().to_string() == slot_label)
+            .map(|info| String::from_utf8_lossy(&info.label).trim_end() == slot_label)
             .unwrap_or(false)
     }
 
@@ -132,7 +132,7 @@ fn get_slot(pkcs11: &Pkcs11, server_opt: &Pkcs11ServerOpt) -> Result<Slot> {
             match pkcs11
                 .get_all_slots()?
                 .into_iter()
-                .find(|&slot| slot.id() == (*id).into())
+                .find(|&slot| slot.id() == *id)
             {
                 Some(slot) => slot,
                 None => bail!("Cannot find slot wiht id {}", id),
