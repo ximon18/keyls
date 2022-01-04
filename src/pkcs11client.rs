@@ -1,35 +1,54 @@
-use anyhow::{anyhow, bail, Result};
-use pkcs11::{
+use anyhow::{bail, Result};
+use cryptoki::{
     types::{
-        CKA_CLASS, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS_BITS, CKF_RW_SESSION,
-        CKF_SERIAL_SESSION, CKK_RSA, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKU_USER, CK_ATTRIBUTE,
-        CK_KEY_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_SLOT_ID, CK_ULONG,
+        locking::CInitializeArgs,
+        object::{Attribute, AttributeType, ObjectClass, ObjectHandle},
+        session::{Session, UserType},
+        slot_token::Slot,
+        Flags,
     },
-    Ctx,
+    Pkcs11,
 };
 
 use crate::{
     config::{Opt, Pkcs11ServerOpt, ServerOpt},
-    key::{Key, KeyType},
+    key::Key,
 };
 
 pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
     if let ServerOpt::Pkcs11(server_opt) = &opt.server {
-        let ctx = Ctx::new_and_initialize(&server_opt.lib_path)?;
+        let pkcs11 = Pkcs11::new(&server_opt.lib_path)?;
+        pkcs11.initialize(CInitializeArgs::OsThreads)?;
 
-        let slot_id = get_slot_id(&ctx, server_opt)?;
-        println!("Using PKCS#11 slot id {} ({:#x})", slot_id, slot_id);
+        let slot = get_slot(&pkcs11, server_opt)?;
+        println!("Using PKCS#11 slot id {} ({:#x})", slot.id(), slot.id());
+        if let Some(pin) = &server_opt.user_pin {
+            pkcs11.set_pin(slot, &pin)?;
+        }
 
-        let session = ctx.open_session(slot_id, CKF_SERIAL_SESSION | CKF_RW_SESSION, None, None)?;
-
-        ctx.login(session, CKU_USER, server_opt.user_pin.as_deref())?;
+        let mut flags = Flags::new();
+        flags.set_serial_session(true).set_rw_session(true);
+        let session = pkcs11.open_session_no_callback(slot, flags)?;
+        session.login(UserType::User)?;
 
         let mut keys = Vec::new();
-        for key_id in get_key_ids(&ctx, session, CKO_PRIVATE_KEY)? {
-            keys.push(get_key(&ctx, session, key_id)?);
+        for key_handle in session.find_objects(&[Attribute::Class(ObjectClass::PRIVATE_KEY)])? {
+            match get_key(&session, crate::key::KeyType::Private, key_handle) {
+                Ok(key) => keys.push(key),
+                Err(err) => eprintln!(
+                    "Error retrieving attributes for private key {:?}: {}",
+                    key_handle, err
+                ),
+            }
         }
-        for key_id in get_key_ids(&ctx, session, CKO_PUBLIC_KEY)? {
-            keys.push(get_key(&ctx, session, key_id)?);
+        for key_handle in session.find_objects(&[Attribute::Class(ObjectClass::PUBLIC_KEY)])? {
+            match get_key(&session, crate::key::KeyType::Public, key_handle) {
+                Ok(key) => keys.push(key),
+                Err(err) => eprintln!(
+                    "Error retrieving attributes for public key {:?}: {}",
+                    key_handle, err
+                ),
+            }
         }
 
         keys.sort_by_key(|v| v.id.clone());
@@ -40,107 +59,98 @@ pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
     }
 }
 
-fn get_key(ctx: &Ctx, session: CK_SESSION_HANDLE, key_id: CK_OBJECT_HANDLE) -> Result<Key> {
-    let mut template: Vec<CK_ATTRIBUTE> =
-        vec![CK_ATTRIBUTE::new(CKA_ID), CK_ATTRIBUTE::new(CKA_LABEL)];
-    let (_, res_vec) = ctx.get_attribute_value(session, key_id, &mut template)?;
-    let id_len = res_vec
-        .get(0)
-        .ok_or_else(|| anyhow!("Missing attribute CKA_ID"))?
-        .ulValueLen as usize;
-    let label_len = res_vec
-        .get(1)
-        .ok_or_else(|| anyhow!("Missing attribute CKA_LABEL"))?
-        .ulValueLen as usize;
+fn get_key(
+    session: &Session,
+    key_type: crate::key::KeyType,
+    key_handle: ObjectHandle,
+) -> Result<Key> {
+    // Requesting the class attribute for a private key on a YubiHSM2 Nano causes the
+    // request for attributes to fail with error "Feature not supported" so we instead
+    // assume that the class specified by the user is correct...
+    let mut key = Key {
+        id: Default::default(),
+        typ: key_type,
+        name: Default::default(),
+        alg: Default::default(),
+        len: Default::default(),
+    };
 
-    let mut id = vec![0; id_len];
-    let class: CK_OBJECT_CLASS = 0;
-    let typ: CK_KEY_TYPE = 0;
-    let len: CK_ULONG = 0;
-    let mut label = vec![0; label_len];
-
-    let mut template: Vec<CK_ATTRIBUTE> = vec![
-        CK_ATTRIBUTE::new(CKA_ID).with_bytes(id.as_mut_slice()),
-        CK_ATTRIBUTE::new(CKA_CLASS).with_ck_ulong(&class),
-        CK_ATTRIBUTE::new(CKA_MODULUS_BITS).with_ck_ulong(&len),
-        CK_ATTRIBUTE::new(CKA_KEY_TYPE).with_ck_ulong(&typ),
-        CK_ATTRIBUTE::new(CKA_LABEL).with_bytes(label.as_mut_slice()),
+    let request_attrs = [
+        AttributeType::Id,
+        AttributeType::ModulusBits,
+        AttributeType::KeyType,
+        AttributeType::Label,
     ];
-    ctx.get_attribute_value(session, key_id, &mut template)?;
+    let attrs = session.get_attributes(key_handle, &request_attrs)?;
 
-    let alg = match typ {
-        CKK_RSA => "RSA".to_string(),
-        _ => "Non-RSA".to_string(),
-    };
-
-    let typ = match class {
-        CKO_PRIVATE_KEY => KeyType::Private,
-        CKO_PUBLIC_KEY => KeyType::Public,
-        _ => bail!("Unsupported object class"),
-    };
-
-    Ok(Key {
-        id: hex::encode_upper(&id),
-        typ,
-        name: String::from_utf8_lossy(&label).to_string(),
-        alg,
-        len: len.to_string(),
-    })
-}
-
-fn get_key_ids(
-    ctx: &Ctx,
-    session: CK_SESSION_HANDLE,
-    object_type: CK_OBJECT_CLASS,
-) -> Result<Vec<CK_OBJECT_HANDLE>> {
-    let mut key_ids = Vec::new();
-    let max_object_count: CK_ULONG = 100;
-
-    let template: Vec<CK_ATTRIBUTE> =
-        vec![CK_ATTRIBUTE::new(CKA_CLASS).with_ck_ulong(&object_type)];
-    ctx.find_objects_init(session, &template)?;
-
-    loop {
-        // Find more results
-        let mut found_key_ids = ctx.find_objects(session, max_object_count)?;
-        let found_count: u64 = found_key_ids.len().try_into().unwrap();
-
-        // Move the found results into the final result vector
-        key_ids.append(&mut found_key_ids);
-
-        // Stop if the find buffer was not filled, i.e. there are no more results to be found
-        if found_count < max_object_count {
-            break;
+    for attr in attrs {
+        match attr {
+            Attribute::Class(class) => {
+                if class == ObjectClass::PRIVATE_KEY {
+                    key.typ = crate::key::KeyType::Private;
+                } else if class == ObjectClass::PUBLIC_KEY {
+                    key.typ = crate::key::KeyType::Public;
+                } else {
+                    bail!("Unsupported object class");
+                }
+            }
+            Attribute::Id(id) => {
+                key.id = hex::encode_upper(&id);
+            }
+            Attribute::KeyType(typ) => {
+                if typ == cryptoki::types::object::KeyType::RSA {
+                    key.alg = "RSA".to_string();
+                } else {
+                    key.alg = "Non-RSA".to_string();
+                }
+            }
+            Attribute::Label(label) => {
+                key.name = String::from_utf8_lossy(&label).to_string();
+            }
+            Attribute::ModulusBits(bits) => {
+                key.len = bits.to_string();
+            }
+            _ => {
+                // ignore unexpected attributes
+            }
         }
     }
 
-    ctx.find_objects_final(session)?;
-    Ok(key_ids)
+    Ok(key)
 }
 
-fn get_slot_id(ctx: &Ctx, server_opt: &Pkcs11ServerOpt) -> Result<CK_SLOT_ID> {
-    fn has_token_label(ctx: &Ctx, slot_id: CK_SLOT_ID, slot_label: &str) -> bool {
-        ctx.get_token_info(slot_id)
-            .map(|info| info.label.to_string() == slot_label)
+fn get_slot(pkcs11: &Pkcs11, server_opt: &Pkcs11ServerOpt) -> Result<Slot> {
+    fn has_token_label(pkcs11: &Pkcs11, slot: Slot, slot_label: &str) -> bool {
+        pkcs11
+            .get_token_info(slot)
+            .map(|info| String::from_utf8_lossy(&info.label).trim_end().to_string() == slot_label)
             .unwrap_or(false)
     }
 
-    let slot_id = match (&server_opt.slot_id, &server_opt.slot_label) {
-        (Some(id), None) => *id as u64,
-        (None, Some(label)) => {
-            let slot_id = match ctx
-                .get_slot_list(true)?
+    let slot = match (&server_opt.slot_id, &server_opt.slot_label) {
+        (Some(id), None) => {
+            match pkcs11
+                .get_all_slots()?
                 .into_iter()
-                .find(|&slot_id| has_token_label(ctx, slot_id, label))
+                .find(|&slot| slot.id() == (*id).into())
             {
-                Some(slot_id) => slot_id,
+                Some(slot) => slot,
+                None => bail!("Cannot find slot wiht id {}", id),
+            }
+        }
+        (None, Some(label)) => {
+            match pkcs11
+                .get_slots_with_initialized_token()?
+                .into_iter()
+                .find(|&slot| has_token_label(pkcs11, slot, label))
+            {
+                Some(slot) => slot,
                 None => bail!("Cannot find slot with label '{}'", label),
-            };
-            slot_id
+            }
         }
         (Some(_), Some(_)) => bail!("Cannot specify both slot id and slot label"),
         (None, None) => bail!("Must specify at least one of slot id or slot label"),
     };
 
-    Ok(slot_id)
+    Ok(slot)
 }
