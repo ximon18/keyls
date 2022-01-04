@@ -53,7 +53,7 @@ pub struct KmipServerOpt {
 pub struct Pkcs11ServerOpt {
     pub lib_path: PathBuf,
 
-    pub slot_id: Option<u32>,
+    pub slot_id: Option<u64>,
 
     pub slot_label: Option<String>,
 
@@ -138,9 +138,9 @@ fn parse_pkcs11_server(input: &str) -> Result<Pkcs11ServerOpt> {
     })
 }
 
-fn parse_slot_id_or_label(input: &str) -> Result<(Option<u32>, Option<String>)> {
+fn parse_slot_id_or_label(input: &str) -> Result<(Option<u64>, Option<String>)> {
     // input should be of the form: slot_id_or_label
-    match input.parse::<u32>() {
+    match input.parse::<u64>() {
         Ok(slot_id) => Ok((Some(slot_id), None)),
         Err(_) => Ok((None, Some(input.to_string()))),
     }
