@@ -1,18 +1,14 @@
 use anyhow::{bail, Result};
 use cryptoki::{
-    types::{
-        locking::CInitializeArgs,
-        object::{Attribute, AttributeType, ObjectClass, ObjectHandle},
-        session::{Session, UserType},
-        slot_token::Slot,
-        Flags,
-    },
-    Pkcs11,
+    context::{CInitializeArgs, Pkcs11},
+    object::{Attribute, AttributeType, ObjectClass, ObjectHandle},
+    session::{Session, SessionFlags, UserType},
+    slot::Slot,
 };
 
 use crate::{
     config::{Opt, Pkcs11ServerOpt, ServerOpt},
-    key::Key,
+    key::{Key, KeyType},
 };
 
 pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
@@ -22,18 +18,15 @@ pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
 
         let slot = get_slot(&pkcs11, server_opt)?;
         println!("Using PKCS#11 slot id {} ({:#x})", slot.id(), slot.id());
-        if let Some(pin) = &server_opt.user_pin {
-            pkcs11.set_pin(slot, pin)?;
-        }
 
-        let mut flags = Flags::new();
+        let mut flags = SessionFlags::new();
         flags.set_serial_session(true).set_rw_session(true);
         let session = pkcs11.open_session_no_callback(slot, flags)?;
-        session.login(UserType::User)?;
+        session.login(UserType::User, server_opt.user_pin.as_deref())?;
 
         let mut keys = Vec::new();
         for key_handle in session.find_objects(&[Attribute::Class(ObjectClass::PRIVATE_KEY)])? {
-            match get_key(&session, crate::key::KeyType::Private, key_handle) {
+            match get_key(&session, key_handle) {
                 Ok(key) => keys.push(key),
                 Err(err) => eprintln!(
                     "Error retrieving attributes for private key {:?}: {}",
@@ -42,7 +35,7 @@ pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
             }
         }
         for key_handle in session.find_objects(&[Attribute::Class(ObjectClass::PUBLIC_KEY)])? {
-            match get_key(&session, crate::key::KeyType::Public, key_handle) {
+            match get_key(&session, key_handle) {
                 Ok(key) => keys.push(key),
                 Err(err) => eprintln!(
                     "Error retrieving attributes for public key {:?}: {}",
@@ -59,23 +52,17 @@ pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
     }
 }
 
-fn get_key(
-    session: &Session,
-    key_type: crate::key::KeyType,
-    key_handle: ObjectHandle,
-) -> Result<Key> {
-    // Requesting the class attribute for a private key on a YubiHSM2 Nano causes the
-    // request for attributes to fail with error "Feature not supported" so we instead
-    // assume that the class specified by the user is correct...
+fn get_key(session: &Session, key_handle: ObjectHandle) -> Result<Key> {
     let mut key = Key {
         id: Default::default(),
-        typ: key_type,
+        typ: KeyType::Private,
         name: Default::default(),
         alg: Default::default(),
         len: Default::default(),
     };
 
     let request_attrs = [
+        AttributeType::Class,
         AttributeType::Id,
         AttributeType::ModulusBits,
         AttributeType::KeyType,
@@ -87,9 +74,9 @@ fn get_key(
         match attr {
             Attribute::Class(class) => {
                 if class == ObjectClass::PRIVATE_KEY {
-                    key.typ = crate::key::KeyType::Private;
+                    key.typ = KeyType::Private;
                 } else if class == ObjectClass::PUBLIC_KEY {
-                    key.typ = crate::key::KeyType::Public;
+                    key.typ = KeyType::Public;
                 } else {
                     bail!("Unsupported object class");
                 }
@@ -98,7 +85,7 @@ fn get_key(
                 key.id = hex::encode_upper(&id);
             }
             Attribute::KeyType(typ) => {
-                if typ == cryptoki::types::object::KeyType::RSA {
+                if typ == cryptoki::object::KeyType::RSA {
                     key.alg = "RSA".to_string();
                 } else {
                     key.alg = "Non-RSA".to_string();

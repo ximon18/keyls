@@ -132,22 +132,19 @@ dependencies = [
 
 [[package]]
 name = "cryptoki"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dcf151ec0f80b3798687640a731829fee41723e5850eb75bc860c106f2dbfc2"
+version = "0.3.0"
+source = "git+https://github.com/parallaxsecond/rust-cryptoki/#1eb4b10cf4caf7a325576a68fee6bb5c39c50589"
 dependencies = [
  "cryptoki-sys",
  "derivative",
  "libloading",
  "log",
- "secrecy",
 ]
 
 [[package]]
 name = "cryptoki-sys"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a426b46cbf8e98cea0209767e5c601199369c593d83466ffbc541ac4e0a15f52"
+source = "git+https://github.com/parallaxsecond/rust-cryptoki/#1eb4b10cf4caf7a325576a68fee6bb5c39c50589"
 dependencies = [
  "libloading",
  "target-lexicon",
@@ -531,15 +528,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71d301d4193d031abdd79ff7e3dd721168a9572ef3fe51a1517aba235bd8f86e"
 
 [[package]]
-name = "secrecy"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0673d6a6449f5e7d12a1caf424fd9363e2af3a4953023ed455e3c4beef4597c0"
-dependencies = [
- "zeroize",
-]
-
-[[package]]
 name = "semver"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -712,9 +700,3 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
-
-[[package]]
-name = "zeroize"
-version = "1.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d68d9dcec5f9b43a30d38c49f91dfedfaac384cb8f085faca366c26207dd1619"
