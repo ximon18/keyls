@@ -110,7 +110,7 @@ fn get_slot(pkcs11: &Pkcs11, server_opt: &Pkcs11ServerOpt) -> Result<Slot> {
     fn has_token_label(pkcs11: &Pkcs11, slot: Slot, slot_label: &str) -> bool {
         pkcs11
             .get_token_info(slot)
-            .map(|info| String::from_utf8_lossy(&info.label).trim_end() == slot_label)
+            .map(|info| info.label().trim_end() == slot_label)
             .unwrap_or(false)
     }
 
