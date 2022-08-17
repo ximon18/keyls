@@ -14,6 +14,8 @@ use structopt::StructOpt;
 use crate::config::{Opt, ServerOpt};
 
 fn main() -> Result<()> {
+    env_logger::init();
+    
     let opt = Opt::from_args();
 
     let keys = match &opt.server {
