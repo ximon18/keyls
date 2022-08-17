@@ -1,3 +1,4 @@
+use log::error;
 use std::time::Duration;
 
 use anyhow::{bail, Result};
@@ -22,10 +23,16 @@ pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
 
     let mut keys = Vec::new();
     for key_id in get_key_ids(&client, ObjectType::PrivateKey)? {
-        keys.push(get_key(&client, &key_id)?);
+        match get_key(&client, &key_id) {
+            Ok(key) => keys.push(key),
+            Err(err) => error!("GET private key '{:?}' failed: {}", &key_id, err),
+        }
     }
     for key_id in get_key_ids(&client, ObjectType::PublicKey)? {
-        keys.push(get_key(&client, &key_id)?);
+        match get_key(&client, &key_id) {
+            Ok(key) => keys.push(key),
+            Err(err) => error!("GET public key '{:?}' failed: {}", &key_id, err),
+        }
     }
 
     keys.sort_by_key(|v| v.id.clone());

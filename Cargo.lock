@@ -317,6 +317,7 @@ dependencies = [
  "env_logger",
  "hex",
  "kmip-protocol",
+ "log",
  "prettytable-rs",
  "structopt",
 ]
