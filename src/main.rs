@@ -9,7 +9,7 @@ mod util;
 
 use anyhow::Result;
 use prettytable::{format, row, Table};
-use structopt::StructOpt;
+use clap::StructOpt;
 
 use crate::config::{Opt, ServerOpt};
 
