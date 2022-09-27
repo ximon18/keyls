@@ -17,4 +17,4 @@ hex = "0.4.3"
 kmip = { package = "kmip-protocol", version = "0.4.2", features = ["tls-with-openssl-vendored"] }
 log = "0.4.17"
 prettytable-rs = "0.8.0"
-structopt = "0.3.25"
+clap = { version = "3.2.22", features = ["derive"] }

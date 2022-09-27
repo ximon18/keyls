@@ -3,11 +3,11 @@ use std::str::FromStr;
 
 use anyhow::bail;
 use anyhow::Result;
-use structopt::StructOpt;
+use clap::StructOpt;
 
 /// A StructOpt example
-#[derive(StructOpt, Debug)]
-#[structopt(about = "A cryptographic token key lister")]
+#[derive(clap::StructOpt, Debug)]
+#[clap(about = "A cryptographic token key lister")]
 #[rustfmt::skip]
 pub struct Opt {
     #[structopt(parse(try_from_str = parse_server), help = "Server location (e.g. kmip:[user[:pass]@]ip_or_fqdn[:port] or pkcs11:slot_id_or_label[:user_pin]@path/to/lib.so)")]
