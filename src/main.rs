@@ -7,15 +7,15 @@ mod pkcs11client;
 mod util;
 
 use anyhow::Result;
+use clap::Parser;
 use prettytable::{format, row, Table};
-use clap::StructOpt;
 
 use crate::config::{Opt, ServerOpt};
 
 fn main() -> Result<()> {
     env_logger::init();
-    
-    let opt = Opt::from_args();
+
+    let opt = Opt::parse();
 
     let keys = match &opt.server {
         ServerOpt::Kmip(_) => kmipclient::get_keys(opt)?,

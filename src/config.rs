@@ -3,42 +3,49 @@ use std::str::FromStr;
 
 use anyhow::bail;
 use anyhow::Result;
-use clap::StructOpt;
+use clap::{Args, Parser};
 
-/// A StructOpt example
-#[derive(clap::StructOpt, Debug)]
-#[clap(about = "A cryptographic token key lister")]
-#[rustfmt::skip]
+/// A cryptographic token key lister
+#[derive(Parser)]
+#[command(about)]
 pub struct Opt {
-    #[structopt(parse(try_from_str = parse_server), help = "Server location (e.g. kmip:[user[:pass]@]ip_or_fqdn[:port] or pkcs11:slot_id_or_label[:user_pin]@path/to/lib.so)")]
-    pub server: ServerOpt,
-
-    #[structopt(long = "insecure", help = "Disable secure checks (e.g. verification of the server certificate)")]
+    /// Disable secure checks (e.g. verification of the server certificate)
+    #[arg(long = "insecure", default_value_t = false)]
     pub insecure: bool,
 
-    #[structopt(long = "client-cert", parse(from_os_str), help = "Path to the client certificate file in PEM format")]
+    /// Path to the client certificate file in PEM format
+    #[arg(long = "client-cert")]
     pub client_cert_path: Option<PathBuf>,
 
-    #[structopt(long = "client-key", parse(from_os_str), help = "Path to the client certificate key file in PEM format")]
+    /// Path to the client certificate key file in PEM format
+    #[arg(long = "client-key")]
     pub client_key_path: Option<PathBuf>,
 
-    #[structopt(long = "client-cert-and-key", parse(from_os_str), help = "Path to the client certificate and key file in PKCS#12 format")]
+    /// Path to the client certificate and key file in PKCS#12 format
+    #[arg(long = "client-cert-and-key")]
     pub client_pkcs12_path: Option<PathBuf>,
 
-    #[structopt(long = "server-cert", parse(from_os_str), help = "Path to the server certificate file in PEM format")]
+    /// Path to the server certificate file in PEM format
+    #[arg(long = "server-cert")]
     pub server_cert_path: Option<PathBuf>,
 
-    #[structopt(long = "server-ca-cert", parse(from_os_str), help = "Path to the server CA certificate file in PEM format")]
+    /// Path to the server CA certificate file in PEM format
+    #[arg(long = "server-ca-cert")]
     pub ca_cert_path: Option<PathBuf>,
+
+    /// Server location (e.g. kmip:[user[:pass]@]ip_or_fqdn[:port] or pkcs11:slot_id_or_label[:user_pin]@path/to/lib.so)
+    #[arg(value_parser = parse_server)]
+    pub server: ServerOpt,
 }
 
-#[derive(Debug)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum ServerOpt {
     Kmip(KmipServerOpt),
     Pkcs11(Pkcs11ServerOpt),
 }
 
-#[derive(StructOpt, Debug)]
+#[derive(Args)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct KmipServerOpt {
     pub addr: String,
 
@@ -49,7 +56,8 @@ pub struct KmipServerOpt {
     pub pass: Option<String>,
 }
 
-#[derive(StructOpt, Debug)]
+#[derive(Args)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Pkcs11ServerOpt {
     pub lib_path: PathBuf,
 
