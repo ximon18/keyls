@@ -19,7 +19,7 @@ use crate::{
 };
 
 pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
-    let client = kmip::client::tls::openssl::connect(&opt.try_into()?)?;
+    let client = kmip::client::tls::rustls::connect(&opt.try_into()?)?;
 
     let mut keys = Vec::new();
     for key_id in get_key_ids(&client, ObjectType::PrivateKey)? {
@@ -95,8 +95,16 @@ fn get_key_ids<T: ReadWrite>(
     object_type: ObjectType,
 ) -> Result<Vec<UniqueIdentifier>> {
     let payload = RequestPayload::Locate(vec![Attribute::ObjectType(object_type)]);
-    match client.do_request(payload)? {
-        ResponsePayload::Locate(res) => Ok(res.unique_identifiers),
+    match client.do_request(payload) {
+        Ok(ResponsePayload::Locate(res)) => Ok(res.unique_identifiers.unwrap_or_default()),
+        Err(err) => {
+            eprintln!(
+                "Error: {err}, Diagnostics: req: {}, resp: {}",
+                client.last_req_diag_str().unwrap_or_default(),
+                client.last_res_diag_str().unwrap_or_default()
+            );
+            Err(err)?
+        }
         _ => bail!("Unexpected response payload"),
     }
 }
