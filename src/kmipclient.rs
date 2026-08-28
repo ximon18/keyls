@@ -160,7 +160,7 @@ fn load_client_cert(opt: &Opt) -> Result<Option<ClientCertificate>> {
             }),
             (Some(path), None, None) => Some(ClientCertificate::SeparatePem {
                 cert_bytes: load_binary_file(path)?,
-                key_bytes: None,
+                key_bytes: vec![],
             }),
             (None, Some(_), None) => {
                 bail!("Client certificate key path requires a client certificate path")
@@ -170,7 +170,7 @@ fn load_client_cert(opt: &Opt) -> Result<Option<ClientCertificate>> {
             }
             (Some(cert_path), Some(key_path), None) => Some(ClientCertificate::SeparatePem {
                 cert_bytes: load_binary_file(cert_path)?,
-                key_bytes: Some(load_binary_file(key_path)?),
+                key_bytes: load_binary_file(key_path)?,
             }),
         }
     };
