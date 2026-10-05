@@ -1,13 +1,17 @@
-use log::error;
+use log::info;
 use std::time::Duration;
 
 use anyhow::{bail, Result};
 use kmip::{
-    client::{Client, ClientCertificate, ConnectionSettings},
+    net::{Client, ClientCertificate, ConnectionSettings},
     types::{
-        common::{AttributeName, AttributeValue, ObjectType, UniqueIdentifier},
-        request::{Attribute, RequestPayload},
-        response::{GetResponsePayload, ManagedObject, ResponsePayload},
+        common::{
+            self, AttributeName,
+            AttributeValue::{self},
+            ObjectType, Operation, UniqueIdentifier,
+        },
+        request::{Attribute, BatchItem, Name, RequestPayload},
+        response::ResponsePayload,
         traits::ReadWrite,
     },
 };
@@ -19,19 +23,62 @@ use crate::{
 };
 
 pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
-    let client = kmip::client::tls::rustls::connect(&opt.try_into()?)?;
+    let mut client = kmip::net::tls::rustls::connect(&opt.try_into().unwrap()).unwrap();
 
     let mut keys = Vec::new();
-    for key_id in get_key_ids(&client, ObjectType::PrivateKey)? {
-        match get_key(&client, &key_id) {
-            Ok(key) => keys.push(key),
-            Err(err) => error!("GET private key '{:?}' failed: {}", &key_id, err),
-        }
+    let pri_key_ids = get_key_ids(&mut client, ObjectType::PrivateKey)?;
+    let pub_key_ids = get_key_ids(&mut client, ObjectType::PublicKey)?;
+
+    let mut batch_items = vec![];
+    for key_id in pri_key_ids.into_iter().chain(pub_key_ids) {
+        let payload = RequestPayload::GetAttributes(
+            Some(key_id),
+            Some(vec![
+                AttributeName("Name".to_string()),
+                AttributeName("Object Type".to_string()),
+                AttributeName("Cryptographic Algorithm".to_string()),
+                AttributeName("Cryptographic Length".to_string()),
+            ]),
+        );
+        batch_items.push(BatchItem(Operation::GetAttributes, None, payload));
     }
-    for key_id in get_key_ids(&client, ObjectType::PublicKey)? {
-        match get_key(&client, &key_id) {
-            Ok(key) => keys.push(key),
-            Err(err) => error!("GET public key '{:?}' failed: {}", &key_id, err),
+
+    info!("Getting information about {} keys..", batch_items.len(),);
+    for batch_item in client.do_request_batch(batch_items)? {
+        let batch_item = batch_item?;
+        match batch_item.payload {
+            Some(ResponsePayload::GetAttributes(res)) if res.attributes.is_some() => {
+                let mut typ = None;
+                let mut name = None;
+                let mut alg = None;
+                let mut len = None;
+                for attr in res.attributes.unwrap() {
+                    match attr.value {
+                        AttributeValue::Name(Name(t, _)) => name = Some(t.to_string()),
+                        AttributeValue::ObjectType(t) => match t {
+                            ObjectType::PrivateKey => typ = Some(KeyType::Private),
+                            ObjectType::PublicKey => typ = Some(KeyType::Public),
+                            _ => {
+                                continue;
+                            }
+                        },
+                        AttributeValue::CryptographicAlgorithm(t) => alg = Some(t.to_string()),
+                        AttributeValue::CryptographicLength(common::CryptographicLength(t)) => {
+                            len = Some(t.to_string())
+                        }
+                        _ => unimplemented!(),
+                    }
+                }
+
+                keys.push(Key {
+                    id: res.unique_identifier.to_string(),
+                    typ: typ.unwrap(),
+                    name: name.unwrap_or_default(),
+                    alg: alg.unwrap_or_default(),
+                    len: len.unwrap_or_default(),
+                });
+            }
+            _ => unreachable!(),
         }
     }
 
@@ -40,71 +87,14 @@ pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
     Ok(keys)
 }
 
-fn get_key<T: ReadWrite>(client: &Client<T>, key_id: &UniqueIdentifier) -> Result<Key> {
-    let key: GetResponsePayload = client.get_key(key_id)?;
-
-    let (typ, alg, len) = match key.cryptographic_object {
-        ManagedObject::PublicKey(k) => (
-            KeyType::Public,
-            k.key_block.cryptographic_algorithm,
-            k.key_block.cryptographic_length,
-        ),
-        ManagedObject::PrivateKey(k) => (
-            KeyType::Private,
-            k.key_block.cryptographic_algorithm,
-            k.key_block.cryptographic_length,
-        ),
-        _ => bail!("Unsupported type"),
-    };
-
-    let payload = RequestPayload::GetAttributes(
-        Some(key_id.clone()),
-        Some(vec![AttributeName("Name".to_string())]),
-    );
-    let name = match client.do_request(payload)? {
-        ResponsePayload::GetAttributes(res) => match res.attributes {
-            Some(attrs) if !attrs.is_empty() => match &attrs[0].value {
-                AttributeValue::Name(t, _) => t.to_string(),
-                AttributeValue::TextString(t) => t.to_string(),
-                _ => "None".to_string(),
-            },
-            _ => "None".to_string(),
-        },
-        _ => bail!("Unexpected response payload"),
-    };
-
-    let alg = alg
-        .map(|v| v.to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-    let len = len
-        .map(|v| v.to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-    let id = key_id.to_string();
-
-    Ok(Key {
-        id,
-        typ,
-        name,
-        alg,
-        len,
-    })
-}
-
 fn get_key_ids<T: ReadWrite>(
-    client: &Client<T>,
+    client: &mut Client<T>,
     object_type: ObjectType,
 ) -> Result<Vec<UniqueIdentifier>> {
     let payload = RequestPayload::Locate(vec![Attribute::ObjectType(object_type)]);
-    match client.do_request(payload) {
-        Ok(ResponsePayload::Locate(res)) => Ok(res.unique_identifiers.unwrap_or_default()),
-        Err(err) => {
-            eprintln!(
-                "Error: {err}, Diagnostics: req: {}, resp: {}",
-                client.last_req_diag_str().unwrap_or_default(),
-                client.last_res_diag_str().unwrap_or_default()
-            );
-            Err(err)?
-        }
+    info!("Locating keys of type {object_type}");
+    match client.do_request_payload(payload)?.try_into()? {
+        ResponsePayload::Locate(res) => Ok(res.unique_identifiers),
         _ => bail!("Unexpected response payload"),
     }
 }
@@ -140,6 +130,7 @@ impl TryFrom<Opt> for ConnectionSettings {
                 read_timeout: Some(Duration::from_secs(5)),
                 write_timeout: Some(Duration::from_secs(5)),
                 max_response_bytes: None,
+                // server_name: None,
             })
         } else {
             bail!("Expected KMIP settings")

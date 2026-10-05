@@ -8,6 +8,7 @@ mod util;
 
 use anyhow::Result;
 use clap::Parser;
+use kmip::net::NetError;
 use prettytable::{format, row, Table};
 
 use crate::config::{Opt, ServerOpt};
@@ -18,7 +19,13 @@ fn main() -> Result<()> {
     let opt = Opt::parse();
 
     let keys = match &opt.server {
-        ServerOpt::Kmip(_) => kmipclient::get_keys(opt)?,
+        ServerOpt::Kmip(_) => kmipclient::get_keys(opt).inspect_err(|err| {
+            if let NetError::DeserializeError { err, req, res } = err.downcast_ref().unwrap() {
+                eprintln!("Err: {err}");
+                eprintln!("Req: {}", hex::encode_upper(req));
+                eprintln!("Res: {}", hex::encode_upper(res));
+            }
+        })?,
         ServerOpt::Pkcs11(_) => pkcs11client::get_keys(opt)?,
     };
 
