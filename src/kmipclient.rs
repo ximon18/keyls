@@ -23,7 +23,7 @@ use crate::{
 };
 
 pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
-    let mut client = kmip::net::tls::rustls::connect(&opt.try_into().unwrap()).unwrap();
+    let mut client = kmip::net::tls::rustls::connect(&opt.try_into()?)?;
 
     let mut keys = Vec::new();
     let pri_key_ids = get_key_ids(&mut client, ObjectType::PrivateKey)?;

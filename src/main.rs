@@ -20,7 +20,7 @@ fn main() -> Result<()> {
 
     let keys = match &opt.server {
         ServerOpt::Kmip(_) => kmipclient::get_keys(opt).inspect_err(|err| {
-            if let NetError::DeserializeError { err, req, res } = err.downcast_ref().unwrap() {
+            if let Some(NetError::DeserializeError { err, req, res }) = err.downcast_ref() {
                 eprintln!("Err: {err}");
                 eprintln!("Req: {}", hex::encode_upper(req));
                 eprintln!("Res: {}", hex::encode_upper(res));
