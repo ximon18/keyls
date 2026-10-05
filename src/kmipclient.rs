@@ -66,7 +66,7 @@ pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
                         AttributeValue::CryptographicLength(common::CryptographicLength(t)) => {
                             len = Some(t.to_string())
                         }
-                        _ => unimplemented!(),
+                        _ => unreachable!(),
                     }
                 }
 
