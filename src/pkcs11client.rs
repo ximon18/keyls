@@ -1,8 +1,8 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use cryptoki::{
-    context::{CInitializeArgs, Pkcs11},
+    context::{CInitializeArgs, CInitializeFlags, Pkcs11},
     object::{Attribute, AttributeType, ObjectClass, ObjectHandle},
-    session::{Session, SessionFlags, UserType},
+    session::{Session, UserType},
     slot::Slot,
 };
 
@@ -14,15 +14,13 @@ use crate::{
 pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
     if let ServerOpt::Pkcs11(server_opt) = &opt.server {
         let pkcs11 = Pkcs11::new(&server_opt.lib_path)?;
-        pkcs11.initialize(CInitializeArgs::OsThreads)?;
+        pkcs11.initialize(CInitializeArgs::new(CInitializeFlags::OS_LOCKING_OK))?;
 
         let slot = get_slot(&pkcs11, server_opt)?;
         println!("Using PKCS#11 slot id {} ({:#x})", slot.id(), slot.id());
 
-        let mut flags = SessionFlags::new();
-        flags.set_serial_session(true).set_rw_session(true);
-        let session = pkcs11.open_session_no_callback(slot, flags)?;
-        session.login(UserType::User, server_opt.user_pin.as_deref())?;
+        let session = pkcs11.open_rw_session(slot)?;
+        session.login(UserType::User, server_opt.user_pin.as_ref())?;
 
         let mut keys = Vec::new();
         for key_handle in session.find_objects(&[Attribute::Class(ObjectClass::PRIVATE_KEY)])? {

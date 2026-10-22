@@ -8,7 +8,7 @@ mod util;
 
 use anyhow::Result;
 use clap::Parser;
-use prettytable::{format, row, Table};
+use prettytable::{Table, format, row};
 
 use crate::config::{Opt, ServerOpt};
 

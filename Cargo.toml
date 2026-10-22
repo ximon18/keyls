@@ -1,7 +1,7 @@
 [package]
 name = "keyls"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["Ximon Eighteen <ximon.eighteen@gmail.com>"]
 description = "Crpytographic token key lister"
 repository = "https://github.com/NLnetLabs/keyls/"
@@ -10,11 +10,12 @@ categories = ["cryptography"]
 readme = "README.md"
 
 [dependencies]
-anyhow = "1.0"
-cryptoki = "^0.3"
-env_logger = "0.9"
-hex = "0.4"
-kmip = { package = "kmip-protocol", version = "0.4", features = ["tls-with-openssl-vendored"] }
-log = "0.4"
-prettytable-rs = "0.10"
-clap = { version = "4.5", features = ["derive"] }
+anyhow = "1.0.104"
+cryptoki = "^0.12"
+env_logger = "0.11.11"
+hex = "0.4.3"
+# kmip = { package = "kmip-protocol", version = "0.4.2", features = ["tls-with-openssl-vendored"] }
+kmip = { path = "../cascade/kmip-protocol3", package = "kmip-protocol", version = "0.5.1-dev", features = ["tls-with-rustls"] }
+log = "0.4.34"
+prettytable-rs = "0.10.0"
+clap = { version = "4.6.7", features = ["derive"] }
