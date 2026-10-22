@@ -99,8 +99,9 @@ fn parse_user_pass(input: &str) -> Result<(String, Option<String>)> {
 }
 
 fn parse_addr_port(input: &str) -> Result<(String, u16)> {
-    // input should be of the form: ip_or_fqdn[:port]
-    match input.split_once(':') {
+    // input should be of the form: ip_or_fqdn[:port]. Split on the last
+    // occurence of ':' to support IPv6 IP addresses too.
+    match input.rsplit_once(':') {
         Some((ip_or_fqdn, port)) => Ok((ip_or_fqdn.to_string(), port.parse::<u16>()?)),
         None => Ok((input.to_string(), 5696)),
     }
