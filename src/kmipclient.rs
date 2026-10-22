@@ -1,7 +1,7 @@
 use log::info;
 use std::time::Duration;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use kmip::{
     net::{Client, ClientCertificate, ConnectionSettings},
     types::{
@@ -30,7 +30,7 @@ pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
     let pub_key_ids = get_key_ids(&mut client, ObjectType::PublicKey)?;
 
     let mut batch_items = vec![];
-    for key_id in pri_key_ids.into_iter().chain(pub_key_ids) {
+    for (n, key_id) in pri_key_ids.into_iter().chain(pub_key_ids).enumerate() {
         let payload = RequestPayload::GetAttributes(
             Some(key_id),
             Some(vec![
@@ -40,7 +40,11 @@ pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
                 AttributeName("Cryptographic Length".to_string()),
             ]),
         );
-        batch_items.push(BatchItem(Operation::GetAttributes, None, payload));
+        batch_items.push(BatchItem(
+            Operation::GetAttributes,
+            Some(common::UniqueBatchItemID(n.to_be_bytes().to_vec())),
+            payload,
+        ));
     }
 
     info!("Getting information about {} keys..", batch_items.len(),);
@@ -125,6 +129,7 @@ impl TryFrom<Opt> for ConnectionSettings {
                 insecure: opt.insecure,
                 client_cert,
                 server_cert,
+                server_name: None,
                 ca_cert,
                 connect_timeout: Some(Duration::from_secs(5)),
                 read_timeout: Some(Duration::from_secs(5)),
@@ -157,7 +162,9 @@ fn load_client_cert(opt: &Opt) -> Result<Option<ClientCertificate>> {
                 bail!("Client certificate key path requires a client certificate path")
             }
             (_, Some(_), Some(_)) | (Some(_), _, Some(_)) => {
-                bail!("Use either but not both of: client certificate and key PEM file paths, or a PCKS#12 certficate file path")
+                bail!(
+                    "Use either but not both of: client certificate and key PEM file paths, or a PCKS#12 certficate file path"
+                )
             }
             (Some(cert_path), Some(key_path), None) => Some(ClientCertificate::SeparatePem {
                 cert_bytes: load_binary_file(cert_path)?,
