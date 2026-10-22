@@ -1,82 +1,70 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use anyhow::bail;
 use anyhow::Result;
-use clap::{Args, Parser};
+use anyhow::bail;
+use clap::Parser;
+use cryptoki::types::AuthPin;
 
-/// A cryptographic token key lister
-#[derive(Parser)]
-#[command(about)]
+/// A Clap example
+#[derive(Parser, Debug)]
+#[command(about = "A cryptographic token key lister")]
+#[rustfmt::skip]
 pub struct Opt {
-    /// Disable secure checks (e.g. verification of the server certificate)
-    #[arg(long = "insecure", default_value_t = false)]
+    #[arg(
+        value_parser = parse_server,
+        help = "Server location (e.g. kmip:[user[:pass]@]ip_or_fqdn[:port] or pkcs11:slot_id_or_label[:user_pin]@path/to/lib.so)"
+    )]
+    pub server: ServerOpt,
+
+    #[arg(long = "insecure", help = "Disable secure checks (e.g. verification of the server certificate)")]
     pub insecure: bool,
 
-    /// Path to the client certificate file in PEM format
-    #[arg(long = "client-cert")]
+    #[arg(long = "client-cert", value_parser = clap::value_parser!(PathBuf), help = "Path to the client certificate file in PEM format")]
     pub client_cert_path: Option<PathBuf>,
 
-    /// Path to the client certificate key file in PEM format
-    #[arg(long = "client-key")]
+    #[arg(long = "client-key", value_parser = clap::value_parser!(PathBuf), help = "Path to the client certificate key file in PEM format")]
     pub client_key_path: Option<PathBuf>,
 
-    /// Path to the client certificate and key file in PKCS#12 format
-    #[arg(long = "client-cert-and-key")]
+    #[arg(long = "client-cert-and-key", value_parser = clap::value_parser!(PathBuf), help = "Path to the client certificate and key file in PKCS#12 format")]
     pub client_pkcs12_path: Option<PathBuf>,
 
-    /// Path to the server certificate file in PEM format
-    #[arg(long = "server-cert")]
+    #[arg(long = "server-cert", value_parser = clap::value_parser!(PathBuf), help = "Path to the server certificate file in PEM format")]
     pub server_cert_path: Option<PathBuf>,
 
-    /// Path to the server CA certificate file in PEM format
-    #[arg(long = "server-ca-cert")]
+    #[arg(long = "server-ca-cert", value_parser = clap::value_parser!(PathBuf), help = "Path to the server CA certificate file in PEM format")]
     pub ca_cert_path: Option<PathBuf>,
-
-    /// Server location (e.g. kmip:[user[:pass]@]ip_or_fqdn[:port] or pkcs11:slot_id_or_label[:user_pin]@path/to/lib.so)
-    #[arg(value_parser = parse_server)]
-    pub server: ServerOpt,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum ServerOpt {
     Kmip(KmipServerOpt),
     Pkcs11(Pkcs11ServerOpt),
 }
 
-#[derive(Args)]
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct KmipServerOpt {
     pub addr: String,
-
     pub port: u16,
-
     pub user: Option<String>,
-
     pub pass: Option<String>,
 }
 
-#[derive(Args)]
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct Pkcs11ServerOpt {
     pub lib_path: PathBuf,
-
     pub slot_id: Option<u64>,
-
     pub slot_label: Option<String>,
-
-    pub user_pin: Option<String>,
+    pub user_pin: Option<AuthPin>,
 }
 
 fn parse_server(input: &str) -> Result<ServerOpt> {
     match input.split_once(':') {
-        Some(("kmip", settings)) => {
-            Ok(ServerOpt::Kmip(parse_kmip_server(settings)?))
-        }
-        Some(("pkcs11", settings)) => {
-            Ok(ServerOpt::Pkcs11(parse_pkcs11_server(settings)?))
-        }
-        _ => bail!("Expected: kmip:[user[:pass]@]ip_or_fqdn[:port] or pkcs11:slot_id_or_label[:user_pin]@path/to/lib.so")
+        Some(("kmip", settings)) => Ok(ServerOpt::Kmip(parse_kmip_server(settings)?)),
+        Some(("pkcs11", settings)) => Ok(ServerOpt::Pkcs11(parse_pkcs11_server(settings)?)),
+        _ => bail!(
+            "Expected: kmip:[user[:pass]@]ip_or_fqdn[:port] or pkcs11:slot_id_or_label[:user_pin]@path/to/lib.so"
+        ),
     }
 }
 
@@ -125,13 +113,14 @@ fn parse_pkcs11_server(input: &str) -> Result<Pkcs11ServerOpt> {
             let (slot_id, slot_label, user_pin) = match slot_pin.split_once(':') {
                 Some((slot_id_or_label, user_pin)) => {
                     let (slot_id, slot_label) = parse_slot_id_or_label(slot_id_or_label)?;
-                    (slot_id, slot_label, Some(user_pin.to_string()))
+                    (slot_id, slot_label, Some(user_pin.into()))
                 }
                 None => {
                     let (slot_id, slot_label) = parse_slot_id_or_label(slot_pin)?;
                     (slot_id, slot_label, None)
                 }
             };
+
             let lib_path = PathBuf::from_str(lib_path)?;
             (lib_path, slot_id, slot_label, user_pin)
         }
