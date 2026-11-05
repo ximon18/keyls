@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::{Result, bail};
 use kmip::{
-    net::{Client, ClientCertificate, ConnectionSettings},
+    net::{Client, ConnectionSettings, TlsClientAuth, TlsServerAuth},
     types::{
         common::{
             self, AttributeName,
@@ -19,7 +19,6 @@ use kmip::{
 use crate::{
     config::{Opt, ServerOpt},
     key::{Key, KeyType},
-    util::load_binary_file,
 };
 
 pub(crate) fn get_keys(opt: Opt) -> Result<Vec<Key>> {
@@ -108,17 +107,20 @@ impl TryFrom<Opt> for ConnectionSettings {
 
     fn try_from(opt: Opt) -> Result<Self> {
         if let ServerOpt::Kmip(server_opt) = &opt.server {
-            let client_cert = load_client_cert(&opt)?;
+            let tls_client_auth = load_client_cert(&opt)?;
 
-            let server_cert = if let Some(p) = opt.server_cert_path {
-                Some(load_binary_file(&p)?)
-            } else {
-                None
-            };
-            let ca_cert = if let Some(p) = opt.ca_cert_path {
-                Some(load_binary_file(&p)?)
-            } else {
-                None
+            let tls_server_auth = match (opt.server_cert_path, opt.ca_cert_path) {
+                (None, None) if opt.insecure => TlsServerAuth::None,
+                (None, None) => TlsServerAuth::Default,
+                (None, Some(ca_cert_path)) => {
+                    TlsServerAuth::TrustCertificateAuthority(std::fs::read(ca_cert_path)?)
+                }
+                (Some(server_cert_path), None) => {
+                    TlsServerAuth::TrustCertificate(std::fs::read(server_cert_path)?)
+                }
+                (Some(_), Some(_)) => {
+                    bail!("Only one of server certificate or CA certificate can be specified")
+                }
             };
 
             Ok(ConnectionSettings {
@@ -126,16 +128,13 @@ impl TryFrom<Opt> for ConnectionSettings {
                 port: server_opt.port,
                 username: server_opt.user.clone(),
                 password: server_opt.pass.clone(),
-                insecure: opt.insecure,
-                client_cert,
-                server_cert,
-                server_name: None,
-                ca_cert,
                 connect_timeout: Some(Duration::from_secs(5)),
                 read_timeout: Some(Duration::from_secs(5)),
                 write_timeout: Some(Duration::from_secs(5)),
                 max_response_bytes: None,
-                // server_name: None,
+                tls_client_auth,
+                tls_server_auth,
+                tls_server_name: opt.server_name,
             })
         } else {
             bail!("Expected KMIP settings")
@@ -143,32 +142,16 @@ impl TryFrom<Opt> for ConnectionSettings {
     }
 }
 
-fn load_client_cert(opt: &Opt) -> Result<Option<ClientCertificate>> {
+fn load_client_cert(opt: &Opt) -> Result<Option<TlsClientAuth>> {
     let client_cert = {
-        match (
-            &opt.client_cert_path,
-            &opt.client_key_path,
-            &opt.client_pkcs12_path,
-        ) {
-            (None, None, None) => None,
-            (None, None, Some(path)) => Some(ClientCertificate::CombinedPkcs12 {
-                cert_bytes: load_binary_file(path)?,
-            }),
-            (Some(path), None, None) => Some(ClientCertificate::SeparatePem {
-                cert_bytes: load_binary_file(path)?,
-                key_bytes: vec![],
-            }),
-            (None, Some(_), None) => {
-                bail!("Client certificate key path requires a client certificate path")
+        match (&opt.client_cert_path, &opt.client_key_path) {
+            (None, None) => None,
+            (None, Some(_)) | (Some(_), None) => {
+                bail!("Both client certificate and client private key are required")
             }
-            (_, Some(_), Some(_)) | (Some(_), _, Some(_)) => {
-                bail!(
-                    "Use either but not both of: client certificate and key PEM file paths, or a PCKS#12 certficate file path"
-                )
-            }
-            (Some(cert_path), Some(key_path), None) => Some(ClientCertificate::SeparatePem {
-                cert_bytes: load_binary_file(cert_path)?,
-                key_bytes: load_binary_file(key_path)?,
+            (Some(cert_path), Some(key_path)) => Some(TlsClientAuth {
+                cert_bytes: std::fs::read(cert_path)?,
+                private_key_bytes: std::fs::read(key_path)?,
             }),
         }
     };

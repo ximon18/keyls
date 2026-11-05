@@ -4,7 +4,6 @@ mod config;
 mod key;
 mod kmipclient;
 mod pkcs11client;
-mod util;
 
 use anyhow::Result;
 use clap::Parser;

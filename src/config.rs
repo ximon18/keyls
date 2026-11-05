@@ -26,14 +26,14 @@ pub struct Opt {
     #[arg(long = "client-key", value_parser = clap::value_parser!(PathBuf), help = "Path to the client certificate key file in PEM format")]
     pub client_key_path: Option<PathBuf>,
 
-    #[arg(long = "client-cert-and-key", value_parser = clap::value_parser!(PathBuf), help = "Path to the client certificate and key file in PKCS#12 format")]
-    pub client_pkcs12_path: Option<PathBuf>,
-
     #[arg(long = "server-cert", value_parser = clap::value_parser!(PathBuf), help = "Path to the server certificate file in PEM format")]
     pub server_cert_path: Option<PathBuf>,
 
     #[arg(long = "server-ca-cert", value_parser = clap::value_parser!(PathBuf), help = "Path to the server CA certificate file in PEM format")]
     pub ca_cert_path: Option<PathBuf>,
+
+    #[arg(long = "server-name", help = "Name to pass as the TLS SNI value to select the server certificate to use")]
+    pub server_name: Option<String>,
 }
 
 #[derive(Clone, Debug)]
