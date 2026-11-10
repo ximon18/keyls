@@ -85,8 +85,12 @@ fn get_key(session: &Session, key_handle: ObjectHandle) -> Result<Key> {
             Attribute::KeyType(typ) => {
                 if typ == cryptoki::object::KeyType::RSA {
                     key.alg = "RSA".to_string();
+                } else if typ == cryptoki::object::KeyType::EC {
+                    key.alg = "EC".to_string();
+                } else if typ == cryptoki::object::KeyType::EC_EDWARDS {
+                    key.alg = "EC_EDWARDS".to_string();
                 } else {
-                    key.alg = "Non-RSA".to_string();
+                    key.alg = "Unknown".to_string();
                 }
             }
             Attribute::Label(label) => {
